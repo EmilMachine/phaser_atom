@@ -1,0 +1,357 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+	<meta charset="UTF-8" />
+	<title>Phaser - Atom</title>
+    <script src="./phaser.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var game = new Phaser.Game(800, 600, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+
+var acc = 1;
+var acc_random = 10;
+var player_charge = 0;
+var charge_cooldown = 0;
+var charge_cooldown_reset = 20;
+var gen_offset = 20;
+var photon_blink = 7;
+
+var enemyState = 0;
+var enemyVulnarability=0;
+var enemyVulnarabilityReset=200;
+
+var gameState = "playing";
+var endAnimate = 0;
+
+
+function preload() {
+    game.load.image('bg', 'assets/background2.png');
+    game.load.spritesheet('atom', 'assets/ball.png', 50, 50);
+    game.load.spritesheet('electron','assets/electron.png',10,10);
+    game.load.spritesheet('photon','assets/photon.png',20,20);
+    game.load.spritesheet('enemy','assets/enemy.png',30,30);
+    
+}
+
+function create() {
+	    //  We're going to be using physics, so enable the Arcade Physics system
+    game.physics.startSystem(Phaser.Physics.ARCADE);
+
+    //  A simple background for our game
+    game.add.sprite(0, 0, 'bg');
+
+    // ==============================
+    // PLAYER ATOM
+    // ==============================
+
+    player = game.add.sprite(700,100, 'atom');
+
+    // ==============================
+    // PLAYER (ATOM)
+    // ==============================
+
+    //  We need to enable physics on the player
+    game.physics.arcade.enable(player);
+
+    //  Player physics properties. Give the little guy a slight bounce.
+    player.body.bounce.y = 0.2;
+    player.body.bounce.x = 0.2;
+    //player.body.gravity.y = 300;
+    //player.body.gravity.x = 0;
+    player.body.collideWorldBounds = true;
+
+
+    // ==============================
+    // ENEMY
+    // ==============================
+
+    enemy = game.add.sprite(game.world.width/2
+                         , game.world.height/2, 'enemy')
+    game.physics.arcade.enable(enemy);
+    enemy.animations.add('base', [0, 1], 5, true);
+    enemy.animations.add('hurt', [1,2], 10, true);
+    enemy.scale.setTo(1.5, 1.5);
+
+    //  Our two animations, walking left and right.
+    //player.animations.add('left', [0, 1, 2, 3], 10, true);
+    //player.animations.add('right', [5, 6, 7, 8], 10, true);
+    // ==============================
+    // ELECTRON
+    // ==============================
+    electrons = game.add.group();
+    game.physics.arcade.enable(electrons);
+    electrons.enableBody = true;
+
+    e=electrons.create(100,100, 'electron');
+    e.body.collideWorldBounds = true;
+    e.body.bounce.y = 0.5;
+    e.body.bounce.x = 0.5;
+
+    e=electrons.create(700,500, 'electron');
+    e.body.collideWorldBounds = true;
+    e.body.bounce.y = 0.5;
+    e.body.bounce.x = 0.5;
+
+    // ==============================
+    // PHOTON
+    // ==============================
+    photons = game.add.group();
+    game.physics.arcade.enable(photons);
+    photons.enableBody = true;
+
+    p=photons.create(100,500, 'photon');
+
+    p.animations.add('blink', [0, 1], photon_blink, true);
+   
+
+   
+    // ============================
+    // TMP GAME STATE
+    // ============================
+
+    gameText = game.add.text(340, 20, gameState, { fontSize: '32px', fill: '#FFF' });
+
+    // ==============================
+    // ADD keyboard event listener
+    // ==============================
+
+    cursors = game.input.keyboard.createCursorKeys();
+
+}
+
+function update() {
+
+    // ============================    
+    // GENERAL GAME RULE
+    // ============================
+    // update game text
+    gameText.text = gameState;
+
+
+    if(gameState==="playing"){
+    // Animate all photons
+    for (var i = 0, len = photons.children.length; i < len; i++) { photons.children[i].animations.play('blink');
+    }
+
+    //  electrons collide
+    game.physics.arcade.collide(electrons,electrons);
+    
+
+    if(enemyState===0){
+        enemy.animations.play("base");
+        }
+    else if(enemyState===1){
+        enemy.animations.play("hurt");
+        if(enemyVulnarability<=0){
+            enemyState=0
+        } else {
+            enemyVulnarability-=1
+        }
+        }
+    
+
+    // enemy 
+    game.physics.arcade.overlap(enemy,player, enemyPlayer, null, this);
+    game.physics.arcade.overlap(enemy, electrons, enemyElectron, null, this);
+    game.physics.arcade.overlap(enemy, photons, enemyPhoton, null, this);
+
+
+
+    // ============================
+    // PLAYER INTERACTION
+    // ============================
+    if(charge_cooldown > 0){
+        charge_cooldown-=1
+        player.frame = 3;
+
+    }
+    else{
+
+        // NOT NEGATIVE
+        if(player_charge>-1){
+            game.physics.arcade.overlap(player, electrons, collectElectron, null, this);
+        }
+
+        // NOT POSITIVE
+     
+        if(player_charge<1){
+            game.physics.arcade.overlap(player, photons,    collectPhoton, null, this);
+        }
+
+        // POSITIVE
+        if(player_charge===1){
+            player.frame = 0;
+        }
+
+        // NEGATIVE
+        else if (player_charge===-1){
+            player.frame = 1;
+            game.physics.arcade.collide(player,electrons);
+     
+        }
+        // NEUTRAL
+        else if (player_charge===0){
+            player.frame = 2;
+        }
+
+    }
+
+    // =======================
+    // PLAYER CONTROL
+    // =======================
+
+    // Random base movement (flavor)
+    player.body.velocity.x += (Math.random()-0.5)*acc_random
+    player.body.velocity.y += (Math.random()-0.5)*acc_random
+
+    // cursor control
+    if (cursors.left.isDown)
+    {
+        //  Move to the left
+        player.body.velocity.x += -15*acc;
+    }
+    if (cursors.right.isDown)
+    {
+        //  Move to the right
+        player.body.velocity.x += 15*acc;
+    }
+    if  (cursors.up.isDown)
+    {
+        player.body.velocity.y += -15*acc;
+    }
+	if  (cursors.down.isDown)
+    {
+        player.body.velocity.y += 15*acc;
+    }
+  
+
+    } else{
+        // STOP ALL MOVEMENT AND ANIMATION
+
+        // PLAYER
+        player.body.velocity.x=0
+        player.body.velocity.y=0
+        
+        // DEact electrons
+        for (var i = 0, len = electrons.children.length; i < len; i++) {
+            electrons.children[i].body.velocity.x=0
+            electrons.children[i].body.velocity.y=0
+
+        }
+
+        // DE Animate all photons
+        for (var i = 0, len = photons.children.length; i < len; i++) {
+            photons.children[i].animations.stop();
+            photons.children[i].body.velocity.x=0
+            photons.children[i].body.velocity.y=0
+
+        }
+
+        // Deanimate ENEMY
+        enemy.animations.stop()
+        
+
+        if(gameState==="won"){
+        //
+        if(endAnimate<100){
+        photons.create(
+        enemy.body.position.x+(Math.random())*40
+        ,enemy.body.position.y+(Math.random())*40
+        , 'photon');
+        endAnimate+=1
+        }   
+        }
+
+    }
+
+}
+
+// ==========================
+// PLAYER (ATOM) INTERACTIONS
+// ==========================
+
+function collectElectron(player,electron){
+    electron.kill()
+    player_charge -= 1;
+    player.frame = 3;
+    charge_cooldown = charge_cooldown_reset;
+
+    // CREATE PHOTON
+    console.log(player.body.position)
+
+    p=photons.create(
+        player.body.position.x+Math.sign(player.body.velocity.x)*gen_offset
+        ,player.body.position.y+Math.sign(player.body.velocity.y)*gen_offset
+        , 'photon');
+
+    p.body.collideWorldBounds = true;
+    p.body.bounce.y = 1;
+    p.body.bounce.x = 1;
+
+    p.body.velocity.x = 2*player.body.velocity.x
+    p.body.velocity.y = 2*player.body.velocity.y
+    p.animations.add('blink', [0, 1], photon_blink, true);
+   
+
+    photons.add(p);
+
+}
+
+function collectPhoton(player,photon){
+    photon.kill()
+    player_charge += 1;
+    player.frame = 3;
+    charge_cooldown = charge_cooldown_reset;
+
+    // CREATE ELECTORN
+ 
+    p=electrons.create(
+        player.body.position.x+Math.sign(player.body.velocity.x)*gen_offset
+        ,player.body.position.y+Math.sign(player.body.velocity.y)*gen_offset
+        , 'electron');
+
+    p.body.collideWorldBounds = true;
+    p.body.bounce.y = 1;
+    p.body.bounce.x = 1;
+
+    p.body.velocity.x = player.body.velocity.x
+    p.body.velocity.y = player.body.velocity.y
+    
+
+}
+
+///
+// ENEMY INTERACTIONS
+
+function enemyPlayer(enemy,player){
+    gameState="lost"
+}
+
+function enemyPhoton(enemy,photon){
+    enemyState=1
+    enemyVulnarability=enemyVulnarabilityReset
+}
+
+function enemyElectron(enemy,electron){
+    if(enemyState===1){
+        gameState="won"
+    }
+
+}
+
+
+
+
+
+</script>
+
+</body>
+</html>
